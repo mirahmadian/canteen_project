@@ -1,5 +1,0 @@
-Flask
-Flask-SQLAlchemy
-requests
-gunicorn
-psycopg2-binary  # پکیج اتصال به PostgreSQL دیتابیس Render
