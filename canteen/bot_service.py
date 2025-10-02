@@ -3,7 +3,7 @@ import requests
 import json
 from datetime import date, timedelta
 from flask import current_app
-from models import db, Employee, DailyMenu, Reservation
+from .models import db, Employee, DailyMenu, Reservation
 
 # توکن بات (برای موارد اضطراری، اما از app.py منتقل می‌شود)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
