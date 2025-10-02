@@ -1,141 +1,221 @@
-from .__init__ import app, db
-from .models import Reservation, Employee, DailyMenu, SystemConfig
-from datetime import datetime, time, timedelta, date
+import os
 import requests
 import json
+from datetime import date, timedelta
+from flask import current_app
+from models import db, Employee, DailyMenu, Reservation
 
-# ########## ۱. تنظیمات حیاتی بات بله ##########
-# !!! این توکن را از حساب Bot Father در بله دریافت کرده‌اید:
-BOT_TOKEN = "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I" 
-BALE_API_URL = "https://bot.tinet.ir/api/v2/" 
+# توکن بات (به عنوان بک‌آپ، اگرچه از app.py به عنوان آرگومان منتقل می‌شود)
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
 
-# ########## ۲. توابع ارتباطی با API بله ##########
+# ==========================================================
+# توابع ارسال پیام به API بله
+# ==========================================================
 
-def send_message(chat_id, text, reply_markup=None):
-    """ارسال پیام به کاربر در بله"""
-    url = f"{BALE_API_URL}{BOT_TOKEN}/sendmessage"
+def send_message(chat_id, text, api_base_url, reply_markup=None):
+    """ارسال پیام به چت مشخص شده با استفاده از آدرس API جدید."""
+    
+    # === تغییر کلیدی: استفاده از api_base_url جدید ===
+    url = f"{api_base_url}/sendMessage"
+    
     payload = {
         'chat_id': chat_id,
         'text': text,
-        'reply_markup': reply_markup
+        'reply_markup': json.dumps(reply_markup) if reply_markup else None
     }
+    
     try:
-        # ارسال درخواست به API بله با timeout کوتاه
-        requests.post(url, json=payload, timeout=5) 
+        # ارسال درخواست بدون تایید گواهینامه SSL برای سرورهای داخلی
+        response = requests.post(url, json=payload, verify=False, timeout=10)
+        response.raise_for_status() # اگر وضعیت پاسخ خطا بود، استثنا ایجاد می‌کند
+        return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error sending message to Bale: {e}")
+        return None
 
+def get_phone_keyboard():
+    """ایجاد دکمه درخواست شماره تماس."""
+    keyboard = {
+        'keyboard': [
+            [{'text': 'ارسال شماره تماس', 'request_contact': True}]
+        ],
+        'resize_keyboard': True,
+        'one_time_keyboard': True
+    }
+    return keyboard
 
-# ########## ۳. توابع منطق کسب و کار (Business Logic) ##########
+def get_main_menu_keyboard():
+    """ایجاد کیبورد منوی اصلی."""
+    keyboard = {
+        'keyboard': [
+            [{'text': 'مشاهده منو و رزرو غذا 🍽️'}],
+            [{'text': 'مشاهده رزروهای من 🗓️'}],
+            [{'text': 'راهنما ❓'}]
+        ],
+        'resize_keyboard': True,
+        'one_time_keyboard': False
+    }
+    return keyboard
 
-def get_config_value(key):
-    """خواندن متغیرهای زمانی از جدول SystemConfig."""
-    config = SystemConfig.query.filter_by(key=key).one_or_none()
-    if config:
-        return config.value
-    return None 
+# ==========================================================
+# منطق پردازش دستورات
+# ==========================================================
 
-def get_tomorrow_menu_for_display():
-    """خواندن منوی فردا از دیتابیس برای نمایش به کاربر و ساخت دکمه‌ها."""
-    tomorrow = date.today() + timedelta(days=1)
-    menu = DailyMenu.query.filter_by(date=tomorrow).one_or_none()
-    
-    meal_options = {}
-    if menu:
-        # ساخت دیکشنری {نام غذا: کد callback}
-        if menu.meal_1:
-             meal_options[menu.meal_1] = f"MEAL_{menu.meal_1.replace(' ', '_').upper()}"
-        if menu.meal_2:
-             meal_options[menu.meal_2] = f"MEAL_{menu.meal_2.replace(' ', '_').upper()}"
-        if menu.meal_3:
-             meal_options[menu.meal_3] = f"MEAL_{menu.meal_3.replace(' ', '_').upper()}"
-             
-    return meal_options
-
-def show_daily_menu(chat_id):
-    """نمایش منوی روز بعد با دکمه‌های شیشه‌ای."""
-    meal_options = get_tomorrow_menu_for_display()
-    
-    if not meal_options:
-        send_message(chat_id, "❌ متأسفانه منوی غذای فردا هنوز توسط مدیر تعریف نشده است.")
-        return
-
-    buttons = []
-    for meal, data in meal_options.items():
-        buttons.append([{'text': meal, 'callback_data': data}])
-    
-    markup = json.dumps({'inline_keyboard': buttons})
-
-    send_message(
-        chat_id, 
-        "لطفاً غذای خود را برای فردا انتخاب کنید:", 
-        reply_markup=markup
-    )
-    
-
-def is_reservation_allowed():
-    """بررسی می‌کند آیا در حال حاضر امکان رزرو وجود دارد یا خیر (کنترل زمان و تعطیلی)."""
-    
-    # خواندن ساعات مجاز رزرو از دیتابیس
-    start_hour = int(get_config_value('RESERVATION_START_HOUR') or 18)
-    end_hour = int(get_config_value('RESERVATION_END_HOUR') or 23)
-    
-    now = datetime.now()
-    tomorrow = now.date() + timedelta(days=1)
-    
-    # 1. بررسی ساعت مجاز
-    start_time_today = datetime.combine(now.date(), time(start_hour, 0))
-    end_time_today = datetime.combine(now.date(), time(end_hour, 0))
-
-    if not (start_time_today <= now <= end_time_today):
-        return False, f"زمان مجاز رزرو (از {start_hour}:00 تا {end_hour}:00) به پایان رسیده یا هنوز شروع نشده است."
-
-    # 2. بررسی تعطیلی اضطراری (is_canceled)
-    menu_tomorrow = DailyMenu.query.filter_by(date=tomorrow).one_or_none()
-    
-    if not menu_tomorrow:
-        return False, "منوی غذای فردا هنوز توسط مدیر تعریف نشده است."
-
-    if menu_tomorrow.is_canceled:
-        return False, "رزرو برای فردا به دلیل تعطیلی اضطراری لغو شده است."
-
-    return True, "مجاز به رزرو هستید."
-
-
-def handle_meal_reservation(employee_phone: str, selected_meal_name: str) -> str:
-    """دریافت رزرو از کارمند و ثبت یا ویرایش آن."""
-    
-    allowed, reason = is_reservation_allowed()
-    if not allowed:
-        return f"❌ خطا: {reason}"
-
-    # 1. احراز هویت کارمند با شماره تلفن
-    employee = Employee.query.filter_by(phone_number=employee_phone).one_or_none()
-    if not employee:
-        return "❌ خطا: شماره تلفن شما در سیستم کارمندان یافت نشد."
-
-    # 2. تاریخ رزرو (همیشه فردا)
-    tomorrow_date = datetime.now().date() + timedelta(days=1)
-    
-    # 3. بررسی وجود رزرو قبلی (برای امکان ویرایش)
-    existing_reservation = Reservation.query.filter(
-        Reservation.employee_id == employee.id,
-        Reservation.reservation_date == tomorrow_date
-    ).one_or_none()
-
-    if existing_reservation:
-        # قابلیت ویرایش
-        existing_reservation.selected_meal = selected_meal_name
-        existing_reservation.status = 'Reserved' 
-        db.session.commit()
-        return f"✅ رزرو غذای شما برای فردا با موفقیت به **{selected_meal_name}** **ویرایش** شد."
+def handle_start(chat_id, employee, api_base_url):
+    """پاسخ به دستور /start."""
+    if employee:
+        text = f"سلام {employee.full_name} عزیز! به سیستم رزرو سلف خوش آمدید."
+        send_message(chat_id, text, api_base_url, get_main_menu_keyboard())
     else:
-        # ثبت رزرو جدید
+        text = "لطفاً برای استفاده از ربات، شماره تلفن خود را از طریق دکمه زیر ارسال کنید."
+        send_message(chat_id, text, api_base_url, get_phone_keyboard())
+
+def handle_show_menu(chat_id, employee, api_base_url):
+    """نمایش منوی فردا."""
+    tomorrow = date.today() + timedelta(days=1)
+    menu = DailyMenu.query.filter_by(date=tomorrow).first()
+
+    if menu:
+        text = (
+            f"**منوی سلف برای فردا ({tomorrow.strftime('%Y/%m/%d')}):**\n\n"
+            f"۱. {menu.meal_1}\n"
+            f"۲. {menu.meal_2}\n"
+            f"۳. {menu.meal_3}\n\n"
+            "لطفاً غذای مورد نظر خود را برای رزرو انتخاب کنید."
+        )
+        
+        # کیبورد برای رزرو
+        reserve_keyboard = {
+            'inline_keyboard': [
+                [{'text': menu.meal_1, 'callback_data': f'reserve_1_{tomorrow}'}],
+                [{'text': menu.meal_2, 'callback_data': f'reserve_2_{tomorrow}'}],
+                [{'text': menu.meal_3, 'callback_data': f'reserve_3_{tomorrow}'}],
+            ]
+        }
+        send_message(chat_id, text, api_base_url, reserve_keyboard)
+    else:
+        text = "متأسفانه منوی غذای فردا هنوز ثبت نشده است."
+        send_message(chat_id, text, api_base_url, get_main_menu_keyboard())
+
+def handle_callback_query(chat_id, employee, callback_data, api_base_url):
+    """مدیریت دکمه‌های شیشه‌ای (رزرو)."""
+    if not employee:
+        text = "لطفاً ابتدا احراز هویت کنید."
+        return send_message(chat_id, text, api_base_url, get_phone_keyboard())
+
+    try:
+        action, meal_index, date_str = callback_data.split('_')
+        reserve_date = date.fromisoformat(date_str)
+        meal_index = int(meal_index)
+    except ValueError:
+        return send_message(chat_id, "اطلاعات رزرو نامعتبر است.", api_base_url)
+
+    if action == 'reserve':
+        # بررسی اینکه آیا قبلا رزرو شده است
+        existing_reservation = Reservation.query.filter_by(employee_id=employee.id, reservation_date=reserve_date).first()
+        if existing_reservation:
+            text = "شما قبلاً غذای خود را برای این تاریخ رزرو کرده‌اید. فقط یک رزرو در روز مجاز است."
+            return send_message(chat_id, text, api_base_url)
+
+        menu = DailyMenu.query.filter_by(date=reserve_date).first()
+        if not menu:
+             text = "منوی این روز در دسترس نیست."
+             return send_message(chat_id, text, api_base_url)
+
+        # انتخاب نام غذا بر اساس ایندکس
+        meal_name = getattr(menu, f'meal_{meal_index}', 'نامشخص')
+
         new_reservation = Reservation(
             employee_id=employee.id,
-            reservation_date=tomorrow_date,
-            selected_meal=selected_meal_name
+            reservation_date=reserve_date,
+            meal_name=meal_name
         )
         db.session.add(new_reservation)
         db.session.commit()
-        return f"🎉 رزرو غذای شما برای فردا با موفقیت ثبت شد: **{selected_meal_name}**"
+
+        text = f"✅ رزرو شما برای **{meal_name}** در تاریخ **{date_str}** با موفقیت ثبت شد."
+        send_message(chat_id, text, api_base_url, get_main_menu_keyboard())
+
+
+# ==========================================================
+# تابع اصلی پردازش وب‌هوک
+# ==========================================================
+
+# === تغییر کلیدی: اضافه کردن api_base_url به آرگومان تابع ===
+def process_webhook_request(update, api_base_url):
+    """دریافت و پردازش درخواست وب‌هوک از بله."""
+    with current_app.app_context():
+        # ۱. استخراج اطلاعات اولیه
+        if 'message' in update:
+            message = update['message']
+            chat_id = message['chat']['id']
+            user_id = message['from']['id']
+            
+            # پیدا کردن کارمند در دیتابیس
+            employee = Employee.query.filter_by(bale_id=user_id).first()
+
+            # ۲. مدیریت پیام‌های متنی
+            if 'text' in message:
+                text = message['text'].strip()
+
+                if text == '/start':
+                    handle_start(chat_id, employee, api_base_url)
+                elif text == 'مشاهده منو و رزرو غذا 🍽️':
+                    if employee:
+                        handle_show_menu(chat_id, employee, api_base_url)
+                    else:
+                        handle_start(chat_id, employee, api_base_url)
+                elif text == 'مشاهده رزروهای من 🗓️':
+                    # منطق مشاهده رزروها (در این مثال حذف شده است)
+                    send_message(chat_id, "این قابلیت در حال توسعه است.", api_base_url, get_main_menu_keyboard())
+                else:
+                    send_message(chat_id, "متوجه نشدم. از منوی اصلی استفاده کنید.", api_base_url, get_main_menu_keyboard())
+
+            # ۳. مدیریت درخواست شماره تماس (Contact Request)
+            elif 'contact' in message:
+                contact = message['contact']
+                phone_number_raw = contact.get('phone_number')
+                
+                # تمیز کردن شماره: حذف کد کشور (+98 یا 98) و فقط شماره 09xx
+                if phone_number_raw.startswith('+98'):
+                    phone_number = '0' + phone_number_raw[3:]
+                elif phone_number_raw.startswith('98'):
+                    phone_number = '0' + phone_number_raw[2:]
+                else:
+                    phone_number = phone_number_raw # اگر با 09 شروع شده باشد
+
+                employee = Employee.query.filter_by(phone_number=phone_number).first()
+                
+                if employee:
+                    # احراز هویت موفق: ذخیره bale_id و خوش‌آمدگویی
+                    employee.bale_id = user_id
+                    db.session.commit()
+                    text = f"احراز هویت شما با شماره {phone_number} تأیید شد. به سیستم رزرو سلف خوش آمدید."
+                    handle_start(chat_id, employee, api_base_url)
+                else:
+                    # احراز هویت ناموفق
+                    text = f"شماره {phone_number} در سیستم کارمندی ثبت نشده است. لطفاً با ادمین تماس بگیرید."
+                    send_message(chat_id, text, api_base_url)
+
+        # ۴. مدیریت Callback Query (رزرو)
+        elif 'callback_query' in update:
+            callback_query = update['callback_query']
+            chat_id = callback_query['message']['chat']['id']
+            user_id = callback_query['from']['id']
+            callback_data = callback_query['data']
+            
+            employee = Employee.query.filter_by(bale_id=user_id).first()
+            
+            if employee:
+                handle_callback_query(chat_id, employee, callback_data, api_base_url)
+            else:
+                 send_message(chat_id, "لطفاً برای انجام رزرو ابتدا احراز هویت کنید.", api_base_url, get_phone_keyboard())
+
+    return True
+
+# ==========================================================
+# تابع کمکی برای فراخوانی متدها
+# ==========================================================
+# این تابع به ما کمک می‌کند تا در فایل app.py بتوانیم به سادگی process_webhook_request را فراخوانی کنیم
+# این تابع به ما اطمینان می‌دهد که api_base_url به تابع اصلی منتقل شده است.
+# (این بخش در app.py حذف شده است و تابع اصلی مستقیماً در app.py فراخوانی می‌شود)
