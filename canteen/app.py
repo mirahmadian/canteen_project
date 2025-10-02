@@ -13,6 +13,7 @@ from bot_service import process_webhook_request
 app = Flask(__name__)
 
 # مسیر دیتابیس (برای Render باید در پوشه ای باشد که قابل نوشتن است)
+# از آنجایی که Render پس از اولین اجرا، /tmp را پاک می‌کند، بهتر است init_db() فقط یکبار فراخوانی شود.
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/canteen.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -21,10 +22,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igV
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://canteen-bot-api.onrender.com/bale_webhook")
 
 # === FIX: آدرس جدید API برای حل مشکل DNS در Render ===
-# این آدرس به جای 'https://bot.tinet.ir/api/v2/' استفاده می‌شود تا خطای DNS حل شود.
 BALE_API_BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}" 
 
-db.init_app(app)
+db.init_app(app) # اتصال SQLAlchemy به برنامه
 
 # ===============================================
 # ۲. توابع کمکی و دیتابیس
@@ -33,8 +33,9 @@ db.init_app(app)
 def init_db():
     """ایجاد دیتابیس و اضافه کردن داده‌های تستی."""
     with app.app_context():
+        # این خط دیتابیس را ایجاد می‌کند (اگر وجود نداشته باشد) و جداول را می‌سازد.
         db.create_all()
-        print("دیتابیس ایجاد شد.")
+        print("دیتابیس و جداول ایجاد شدند.")
 
         # ۱. کاربر superadmin (تست)
         super_admin_phone = '09000000000'
@@ -73,9 +74,9 @@ def init_db():
 
 @app.route('/')
 def home():
-    """مسیر اصلی برای بررسی سلامت سرویس و اطمینان از اجرای init_db."""
-    init_db() 
-    return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL})
+    """مسیر اصلی برای بررسی سلامت سرویس."""
+    # فراخوانی init_db از اینجا حذف شد تا هنگام اجرای gunicorn، دیتابیس یک بار ایجاد شود.
+    return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL}), 200
 
 @app.route('/bale_webhook', methods=['POST'])
 def bale_webhook():
@@ -83,19 +84,19 @@ def bale_webhook():
     update = request.get_json()
     
     # فراخوانی تابع پردازش وب‌هوک و ارسال آدرس API جدید
-    # توجه: باید تابع process_webhook_request در bot_service.py را نیز به‌روز کنید
     process_webhook_request(update, BALE_API_BASE_URL)
     
     # بله انتظار پاسخ 200 OK را دارد.
     return jsonify({"status": "ok"}), 200
 
 # ===============================================
-# ۴. اجرای اپلیکیشن (برای Gunicorn/Render)
+# ۴. اجرای اولیه برای gunicorn/render
 # ===============================================
-# این بخش در Render توسط gunicorn اجرا می‌شود:
-# gunicorn canteen.app:app
+# این بخش مستقیماً قبل از اجرای gunicorn فراخوانی می‌شود.
+with app.app_context():
+    init_db()
 
 # این بخش فقط برای تست محلی است:
 if __name__ == '__main__':
-    init_db() 
+    # این خط دیگر نیازی به init_db ندارد چون در بالای آن فراخوانی شده است.
     app.run(debug=True, port=5000)

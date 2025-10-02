@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from flask import current_app
 from models import db, Employee, DailyMenu, Reservation
 
-# توکن بات (به عنوان بک‌آپ، اگرچه از app.py به عنوان آرگومان منتقل می‌شود)
+# توکن بات (برای موارد اضطراری، اما از app.py منتقل می‌شود)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
 
 # ==========================================================
@@ -15,7 +15,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igV
 def send_message(chat_id, text, api_base_url, reply_markup=None):
     """ارسال پیام به چت مشخص شده با استفاده از آدرس API جدید."""
     
-    # === تغییر کلیدی: استفاده از api_base_url جدید ===
+    # === تغییر حیاتی: استفاده از api_base_url جدید ===
+    # این خط مشکل NameResolutionError در Render را حل می‌کند.
     url = f"{api_base_url}/sendMessage"
     
     payload = {
@@ -24,10 +25,11 @@ def send_message(chat_id, text, api_base_url, reply_markup=None):
         'reply_markup': json.dumps(reply_markup) if reply_markup else None
     }
     
+    # اگر در محیط لوکال نیستید و با Render کار می‌کنید، نیازی به verify=False نیست. 
+    # اما برای رفع مشکلات احتمالی SSL در سرورهای خارجی برای دامنه‌های داخلی، آن را نگه می‌داریم.
     try:
-        # ارسال درخواست بدون تایید گواهینامه SSL برای سرورهای داخلی
         response = requests.post(url, json=payload, verify=False, timeout=10)
-        response.raise_for_status() # اگر وضعیت پاسخ خطا بود، استثنا ایجاد می‌کند
+        response.raise_for_status() 
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error sending message to Bale: {e}")
@@ -141,7 +143,7 @@ def handle_callback_query(chat_id, employee, callback_data, api_base_url):
 # تابع اصلی پردازش وب‌هوک
 # ==========================================================
 
-# === تغییر کلیدی: اضافه کردن api_base_url به آرگومان تابع ===
+# === تغییر حیاتی: تابع باید دو آرگومان را بپذیرد ===
 def process_webhook_request(update, api_base_url):
     """دریافت و پردازش درخواست وب‌هوک از بله."""
     with current_app.app_context():
@@ -177,9 +179,9 @@ def process_webhook_request(update, api_base_url):
                 phone_number_raw = contact.get('phone_number')
                 
                 # تمیز کردن شماره: حذف کد کشور (+98 یا 98) و فقط شماره 09xx
-                if phone_number_raw.startswith('+98'):
+                if phone_number_raw and phone_number_raw.startswith('+98'):
                     phone_number = '0' + phone_number_raw[3:]
-                elif phone_number_raw.startswith('98'):
+                elif phone_number_raw and phone_number_raw.startswith('98'):
                     phone_number = '0' + phone_number_raw[2:]
                 else:
                     phone_number = phone_number_raw # اگر با 09 شروع شده باشد
@@ -212,10 +214,3 @@ def process_webhook_request(update, api_base_url):
                  send_message(chat_id, "لطفاً برای انجام رزرو ابتدا احراز هویت کنید.", api_base_url, get_phone_keyboard())
 
     return True
-
-# ==========================================================
-# تابع کمکی برای فراخوانی متدها
-# ==========================================================
-# این تابع به ما کمک می‌کند تا در فایل app.py بتوانیم به سادگی process_webhook_request را فراخوانی کنیم
-# این تابع به ما اطمینان می‌دهد که api_base_url به تابع اصلی منتقل شده است.
-# (این بخش در app.py حذف شده است و تابع اصلی مستقیماً در app.py فراخوانی می‌شود)
