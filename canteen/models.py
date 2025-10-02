@@ -11,16 +11,17 @@ class Employee(db.Model):
     
     # ستون‌های اصلی
     id = db.Column(db.Integer, primary_key=True)
+    
+    # ⬅️ اصلاح کلیدی: افزودن ستون bale_id
+    # این ستون برای شناسایی کاربر بله در دیتابیس لازم است.
+    bale_id = db.Column(db.String(50), unique=True, nullable=True) 
+    
     national_id = db.Column(db.String(10), unique=True, nullable=False)
     phone_number = db.Column(db.String(15), unique=True, nullable=True) # برای اتصال به بله
     full_name = db.Column(db.String(100), nullable=False)
     
-    # ⬅️ ستون مورد نیاز برای نقش ادمین
+    # ستون مورد نیاز برای نقش ادمین
     is_admin = db.Column(db.Boolean, default=False)
-    
-    # ⬅️ اصلاح کلیدی: حذف متد __init__ سفارشی
-    # به SQLAlchemy اجازه می‌دهیم تا خود، سازنده (Constructor) را ایجاد کند.
-    # این کار تضمین می‌کند که آرگومان‌های ستون‌ها (مثل is_admin) به درستی در هنگام ساخت شیء قابل استفاده باشند.
     
     def __repr__(self):
         return f"<Employee {self.full_name} ({self.national_id})>"
