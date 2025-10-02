@@ -3,17 +3,21 @@ from flask import Flask, request, jsonify
 from datetime import date, timedelta
 import requests
 import json
-# مطمئن شوید که فایل‌های models و bot_service در این مسیر قابل دسترسی هستند
-from models import db, Employee, DailyMenu, Reservation 
-from bot_service import process_webhook_request
 
 # ===============================================
-# ۱. تنظیمات اولیه
+# ۱. بخش Imports (اینجا همان جایی است که Imports قرار می‌گیرند)
+# ===============================================
+
+# ⬅️ اصلاح نهایی: استفاده از Imports نسبی برای حل ModuleNotFoundError
+from .models import db, Employee, DailyMenu, Reservation 
+from .bot_service import process_webhook_request
+
+# ===============================================
+# ۲. تنظیمات اولیه
 # ===============================================
 app = Flask(__name__)
 
 # مسیر دیتابیس (برای Render باید در پوشه ای باشد که قابل نوشتن است)
-# از آنجایی که Render پس از اولین اجرا، /tmp را پاک می‌کند، بهتر است init_db() فقط یکبار فراخوانی شود.
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/canteen.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -27,7 +31,7 @@ BALE_API_BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 db.init_app(app) # اتصال SQLAlchemy به برنامه
 
 # ===============================================
-# ۲. توابع کمکی و دیتابیس
+# ۳. توابع کمکی و دیتابیس
 # ===============================================
 
 def init_db():
@@ -69,13 +73,12 @@ def init_db():
         print("داده‌های تستی با موفقیت اضافه شدند.")
 
 # ===============================================
-# ۳. مسیرها (Routes)
+# ۴. مسیرها (Routes)
 # ===============================================
 
 @app.route('/')
 def home():
     """مسیر اصلی برای بررسی سلامت سرویس."""
-    # فراخوانی init_db از اینجا حذف شد تا هنگام اجرای gunicorn، دیتابیس یک بار ایجاد شود.
     return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL}), 200
 
 @app.route('/bale_webhook', methods=['POST'])
@@ -84,19 +87,19 @@ def bale_webhook():
     update = request.get_json()
     
     # فراخوانی تابع پردازش وب‌هوک و ارسال آدرس API جدید
+    # توجه: این تابع در bot_service.py باید دو آرگومان را بپذیرد.
     process_webhook_request(update, BALE_API_BASE_URL)
     
     # بله انتظار پاسخ 200 OK را دارد.
     return jsonify({"status": "ok"}), 200
 
 # ===============================================
-# ۴. اجرای اولیه برای gunicorn/render
+# ۵. اجرای اولیه (برای Gunicorn/Render)
 # ===============================================
-# این بخش مستقیماً قبل از اجرای gunicorn فراخوانی می‌شود.
+# این بخش مطمئن می‌شود که دیتابیس در زمان راه‌اندازی Gunicorn ایجاد شود.
 with app.app_context():
     init_db()
 
 # این بخش فقط برای تست محلی است:
 if __name__ == '__main__':
-    # این خط دیگر نیازی به init_db ندارد چون در بالای آن فراخوانی شده است.
     app.run(debug=True, port=5000)
