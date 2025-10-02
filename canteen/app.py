@@ -5,10 +5,10 @@ import requests
 import json
 
 # ===============================================
-# ۱. بخش Imports (اینجا همان جایی است که Imports قرار می‌گیرند)
+# ۱. بخش Imports
 # ===============================================
 
-# ⬅️ اصلاح نهایی: استفاده از Imports نسبی برای حل ModuleNotFoundError
+# ⬅️ استفاده از Imports نسبی برای دسترسی به مدل‌ها
 from .models import db, Employee, DailyMenu, Reservation 
 from .bot_service import process_webhook_request
 
@@ -23,9 +23,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # توکن و آدرس‌های بات بله
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://canteen-bot-api.onrender.com/bale_webhook")
 
-# === FIX: آدرس جدید API برای حل مشکل DNS در Render ===
+# ⬅️ اصلاح: آدرس Webhook به '/webhook' تغییر یافت تا با تنظیمات Webhook ثبت شده مطابقت داشته باشد.
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://canteen-bot-api.onrender.com/webhook")
+
+# آدرس جدید API برای حل مشکل DNS در Render
 BALE_API_BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}" 
 
 db.init_app(app) # اتصال SQLAlchemy به برنامه
@@ -51,9 +53,9 @@ def init_db():
         # ۲. کارمند تستی (که با آن در بله تست می‌کنیم)
         test_employee_phone = '09121234567'
         if not Employee.query.filter_by(phone_number=test_employee_phone).first():
-             test_employee = Employee(national_id='0012345678', phone_number=test_employee_phone, full_name='کارمند تستی')
-             db.session.add(test_employee)
-             print(f"کارمند تستی با شماره {test_employee_phone} اضافه شد.")
+            test_employee = Employee(national_id='0012345678', phone_number=test_employee_phone, full_name='کارمند تستی')
+            db.session.add(test_employee)
+            print(f"کارمند تستی با شماره {test_employee_phone} اضافه شد.")
         
         # ۳. منوی تستی برای فردا
         tomorrow = date.today() + timedelta(days=1)
@@ -67,7 +69,7 @@ def init_db():
             db.session.add(test_menu)
             print(f"منوی تستی برای {tomorrow} اضافه شد.")
         else:
-             print(f"منوی تستی برای {tomorrow} قبلاً وجود دارد.")
+            print(f"منوی تستی برای {tomorrow} قبلاً وجود دارد.")
 
         db.session.commit()
         print("داده‌های تستی با موفقیت اضافه شدند.")
@@ -81,7 +83,8 @@ def home():
     """مسیر اصلی برای بررسی سلامت سرویس."""
     return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL}), 200
 
-@app.route('/bale_webhook', methods=['POST'])
+# ⬅️ اصلاح کلیدی: مسیر Webhook به '/webhook' تغییر یافت.
+@app.route('/webhook', methods=['POST'])
 def bale_webhook():
     """نقطه ورود اصلی برای دریافت درخواست‌های سرور بله."""
     update = request.get_json()
