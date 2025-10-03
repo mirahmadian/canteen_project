@@ -24,7 +24,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # توکن و آدرس‌های بات بله
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
 
-# ⬅️ اصلاح: آدرس Webhook به '/webhook' تغییر یافت تا با تنظیمات Webhook ثبت شده مطابقت داشته باشد.
+# آدرس Webhook که قبلاً به '/webhook' تغییر دادیم
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://canteen-bot-api.onrender.com/webhook")
 
 # آدرس جدید API برای حل مشکل DNS در Render
@@ -83,14 +83,18 @@ def home():
     """مسیر اصلی برای بررسی سلامت سرویس."""
     return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL}), 200
 
-# ⬅️ اصلاح کلیدی: مسیر Webhook به '/webhook' تغییر یافت.
+# ⬅️ مسیر جدید برای سرویس‌های Keep-Alive
+@app.route('/ping')
+def ping():
+    """یک پاسخ ساده برای سرویس‌های خارجی که سرور را فعال نگه می‌دارند."""
+    return jsonify({"status": "ok", "message": "Pong!"}), 200
+
 @app.route('/webhook', methods=['POST'])
 def bale_webhook():
     """نقطه ورود اصلی برای دریافت درخواست‌های سرور بله."""
     update = request.get_json()
     
     # فراخوانی تابع پردازش وب‌هوک و ارسال آدرس API جدید
-    # توجه: این تابع در bot_service.py باید دو آرگومان را بپذیرد.
     process_webhook_request(update, BALE_API_BASE_URL)
     
     # بله انتظار پاسخ 200 OK را دارد.
