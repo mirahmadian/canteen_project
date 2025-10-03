@@ -2,8 +2,7 @@ import json
 import logging
 from datetime import date, timedelta
 import requests
-from sqlalchemy.orm.exc import NoResultFound
-# توجه: ایمپورت telegram از این خط حذف شد.
+# 🔴 خطای ایمپورت "sqlalchemy.exc" حذف شد، زیرا NoResultFound در منطق فعلی استفاده نمی‌شود.
 from .models import db, Employee, DailyMenu, Reservation 
 
 # تنظیمات اولیه
@@ -59,7 +58,7 @@ def send_admin_menu(chat_id, api_base_url):
     send_message(chat_id, text, api_base_url, reply_markup=keyboard)
 
 # ===============================================
-# ۳. منطق مدیریت کارمندان (جدید)
+# ۳. منطق مدیریت کارمندان
 # ===============================================
 
 def handle_list_employees(chat_id, api_base_url):
