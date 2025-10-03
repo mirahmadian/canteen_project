@@ -12,6 +12,7 @@ from .bot_service import process_webhook_request # فرض می‌کنیم bot_se
 
 # --- تنظیمات اپلیکیشن ---
 def create_app():
+    """ایجاد و پیکربندی اپلیکیشن Flask."""
     # تعیین پوشه تمپلیت به عنوان پوشه فعلی (canteen)
     app = Flask(__name__, template_folder='.') 
     
@@ -30,7 +31,7 @@ def create_app():
     # مقداردهی اولیه SQLAlchemy
     db.init_app(app)
     
-    # مقداردهی اولیه Flask-Migrate (برای اعمال تغییرات مدل در دیتابیس)
+    # مقداردهی اولیه Flask-Migrate 
     migrate = Migrate(app, db)
     
     # --- مسیرهای وب اپلیکیشن ---
@@ -102,38 +103,6 @@ def create_app():
         except Exception as e:
             app.logger.error(f"Error processing webhook: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
-
-    # --- توابع مدیریت دیتابیس ---
-
-    def init_db():
-        """ایجاد دیتابیس و اضافه کردن ادمین پیش‌فرض در صورت نبود."""
-        with app.app_context():
-            # این خطوط برای ساخت دیتابیس و جداول جدید در زمان Deploy لازم هستند
-            db.create_all()
-            
-            # بررسی وجود ادمین پیش‌فرض (کد ملی 0000000000)
-            
-            # استفاده از db.session.execute برای کوئری بهتر در SQLAlchemy 2.0
-            admin_employee = db.session.execute(
-                db.select(Employee).filter_by(national_id='0000000000', is_admin=True)
-            ).scalar_one_or_none()
-            
-            if admin_employee is None:
-                # رمز عبور پیش‌فرض: admin123
-                admin_employee = Employee(
-                    bale_id=os.environ.get('SUPER_ADMIN_BALE_ID', '1807093505'),
-                    national_id='0000000000',
-                    name='Super Admin',
-                    is_admin=True
-                )
-                admin_employee.set_password('admin123')
-                db.session.add(admin_employee)
-                db.session.commit()
-                print("--- Super Admin Created ---")
-    
-    # دیتابیس را در زمان اجرای برنامه ایجاد می‌کند
-    with app.app_context():
-        init_db()
 
     return app
 
