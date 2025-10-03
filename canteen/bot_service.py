@@ -3,8 +3,8 @@ import logging
 from datetime import date, timedelta
 import requests
 from sqlalchemy.orm.exc import NoResultFound
-from .models import db, Employee, DailyMenu, Reservation
-from telegram import ReplyKeyboardMarkup, KeyboardButton # توجه: این ایمپورت اضافه شده است
+# توجه: ایمپورت telegram از این خط حذف شد.
+from .models import db, Employee, DailyMenu, Reservation 
 
 # تنظیمات اولیه
 logger = logging.getLogger(__name__)
@@ -32,7 +32,6 @@ def send_message(chat_id, text, api_base_url, reply_markup=None):
     
     try:
         # InsecureRequestWarning را نادیده می‌گیریم، چون tapi.bale.ai گواهی‌نامه معتبری دارد اما urllib3 گاهی خطا می‌دهد.
-        # در محیط Render، مشکل DNS حل شده و با URL اصلی کار می‌کند.
         response = requests.post(url, json=payload, verify=False) 
         response.raise_for_status() # برای تشخیص خطاهای HTTP
     except requests.exceptions.RequestException as e:
