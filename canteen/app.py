@@ -1,131 +1,150 @@
 import os
-from flask import Flask, request, jsonify
-from datetime import date, timedelta
-import requests
-import json
 import logging
-
-# تنظیمات لاگ‌گیری برای نمایش اطلاعات
-logging.basicConfig(level=logging.INFO)
-
-# ===============================================
-# ۱. بخش Imports
-# ===============================================
-
-# ⬅️ استفاده از Imports نسبی برای دسترسی به مدل‌ها
-from .models import db, Employee, DailyMenu, Reservation 
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 from .bot_service import process_webhook_request
+# توجه: تمام منطق مربوط به مدل‌ها در models.py است.
+from .models import db, Employee, DailyMenu, Reservation 
 
 # ===============================================
-# ۲. تنظیمات اولیه
+# ۱. تنظیمات اولیه Flask
 # ===============================================
+
 app = Flask(__name__)
 
-# مسیر دیتابیس (برای Render باید در پوشه ای باشد که قابل نوشتن است)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/canteen.db'
+# تنظیمات دیتابیس: استفاده از SQLite در محیط توسعه و متغیر محیطی در محیط Production
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///canteen.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default_secret_key_very_secret_123')
 
-# توکن و آدرس‌های بات بله
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "321354773:PExaK8QbMFAdMvA-TaOkKh_O87igVJnh38I")
-
-# آدرس Webhook که قبلاً به '/webhook' تغییر دادیم
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://canteen-bot-api.onrender.com/webhook")
-
-# آدرس جدید API برای حل مشکل DNS در Render
-BALE_API_BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}" 
-
-db.init_app(app) # اتصال SQLAlchemy به برنامه
+# تنظیمات لاگینگ
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ===============================================
-# ۳. توابع کمکی و دیتابیس
+# ۲. پیکربندی دیتابیس و مدل‌ها
 # ===============================================
+
+db.init_app(app)
+
+# 🔔 شناسه بله ادمین اصلی
+# این مقدار باید توسط متغیر محیطی تنظیم شود یا به صورت دستی با شناسه بله واقعی شما جایگزین شود.
+SUPER_ADMIN_BALE_ID = os.environ.get('SUPER_ADMIN_BALE_ID', '1807093505')
 
 def init_db():
-    """ایجاد دیتابیس و اضافه کردن داده‌های تستی."""
+    """ایجاد دیتابیس و اضافه کردن کاربر ادمین اصلی در صورت عدم وجود."""
     with app.app_context():
-        # db.drop_all() # ⬅️ این خط برای حفظ داده‌ها حذف یا کامنت شده است.
-        db.create_all() # ⬅️ ایجاد مجدد جداول (اگر وجود نداشته باشند)
-        logging.info("دیتابیس و جداول ایجاد شدند.")
-
-        # ۱. کاربر superadmin (شما) - ⬅️ شناسه بله واقعی شما
-        super_admin_bale_id = '1807093505'
+        # اگر دیتابیس وجود ندارد، آن را ایجاد کن.
+        if not os.path.exists('canteen.db') and app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
+             logger.info("Initializing SQLite database.")
         
-        # ما فقط در صورتی ادمین را اضافه می‌کنیم که هنوز در دیتابیس نباشد.
-        if not Employee.query.filter_by(bale_id=super_admin_bale_id).first():
-            super_admin = Employee(
-                national_id='1111111111', 
-                phone_number='09000000000', 
-                full_name='Super Admin', 
+        # در صورت استفاده از دیتابیس خارجی، این خط جدول‌ها را ایجاد می‌کند.
+        db.create_all()
+
+        # بررسی وجود ادمین اصلی (با استفاده از یک کد ملی ثابت برای شناسایی)
+        super_admin_national_id = '0000000000' 
+        admin_employee = Employee.query.filter_by(national_id=super_admin_national_id).first()
+        
+        if not admin_employee:
+            logger.info("Creating Super Admin user...")
+            # رمز عبور پیش‌فرض: 'admin123'
+            admin_employee = Employee(
+                national_id=super_admin_national_id,
+                phone_number='09120000000',
+                full_name='مدیر اصلی سیستم',
+                bale_id=SUPER_ADMIN_BALE_ID, # شناسه بله واقعی شما
                 is_admin=True,
-                bale_id=super_admin_bale_id 
+                password_hash=generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'admin123')) # رمز عبور برای ورود به وب
             )
-            db.session.add(super_admin)
-            logging.info(f"کاربر superadmin با شناسه بله {super_admin_bale_id} ایجاد شد.")
-        
-        # ۲. کارمند تستی (که با آن در بله تست می‌کنیم)
-        test_employee_bale_id = '22222222' # یک ID غیرواقعی برای تست
-        if not Employee.query.filter_by(bale_id=test_employee_bale_id).first():
-            test_employee = Employee(
-                national_id='0012345678', 
-                phone_number='09121234567', 
-                full_name='کارمند تستی', 
-                bale_id=test_employee_bale_id
-            ) 
-            db.session.add(test_employee)
-            logging.info(f"کارمند تستی با شناسه بله {test_employee_bale_id} اضافه شد.")
-        
-        # ۳. منوی تستی برای فردا
-        tomorrow = date.today() + timedelta(days=1)
-        # فقط در صورتی منو را اضافه می‌کنیم که منویی برای فردا وجود نداشته باشد.
-        if not DailyMenu.query.filter_by(date=tomorrow).first():
-            test_menu = DailyMenu(
-                date=tomorrow,
-                meal_1='چلو کباب',
-                meal_2='قورمه سبزی',
-                meal_3='زرشک پلو'
-            )
-            db.session.add(test_menu)
-            logging.info(f"منوی تستی برای {tomorrow} اضافه شد.")
+            db.session.add(admin_employee)
+            db.session.commit()
+            logger.info("Super Admin user created successfully.")
         else:
-            logging.info(f"منوی تستی برای {tomorrow} قبلاً وجود دارد.")
+            # اطمینان از به روز بودن شناسه بله و نقش ادمین
+            if admin_employee.bale_id != SUPER_ADMIN_BALE_ID:
+                 admin_employee.bale_id = SUPER_ADMIN_BALE_ID
+                 db.session.commit()
+            if not admin_employee.is_admin:
+                 admin_employee.is_admin = True
+                 db.session.commit()
 
-        db.session.commit()
-        logging.info("داده‌های تستی با موفقیت اضافه شدند.")
+init_db()
 
 # ===============================================
-# ۴. مسیرها (Routes)
+# ۳. مسیرهای وب (پنل ادمین)
 # ===============================================
 
 @app.route('/')
-def home():
-    """مسیر اصلی برای بررسی سلامت سرویس."""
-    return jsonify({"status": "Bot server is running successfully!", "api_base": BALE_API_BASE_URL}), 200
+def index():
+    """صفحه خوش آمدگویی یا هدایت به ادمین."""
+    return redirect(url_for('admin_login'))
 
-@app.route('/ping')
-def ping():
-    """یک پاسخ ساده برای سرویس‌های خارجی که سرور را فعال نگه می‌دارند."""
-    return jsonify({"status": "ok", "message": "Pong!"}), 200
+@app.route('/login', methods=['GET', 'POST'])
+def admin_login():
+    """صفحه ورود ادمین."""
+    if 'admin_logged_in' in session:
+        return redirect(url_for('admin_dashboard'))
+
+    if request.method == 'POST':
+        national_id = request.form.get('national_id')
+        password = request.form.get('password')
+        
+        employee = Employee.query.filter_by(national_id=national_id, is_admin=True).first()
+
+        if employee and check_password_hash(employee.password_hash, password):
+            session['admin_logged_in'] = True
+            session['admin_id'] = employee.id
+            session['admin_name'] = employee.full_name
+            return redirect(url_for('admin_dashboard'))
+        else:
+            error = "کد ملی یا رمز عبور اشتباه است."
+            return render_template('admin_login.html', error=error) 
+
+    return render_template('admin_login.html')
+
+@app.route('/admin')
+def admin_dashboard():
+    """پنل اصلی ادمین (نیازمند احراز هویت)."""
+    if 'admin_logged_in' not in session:
+        return redirect(url_for('admin_login'))
+    
+    # اینجا admin_panel.html را رندر می‌کنیم
+    return render_template('admin_panel.html', admin_name=session.get('admin_name', 'مدیر'))
+
+
+@app.route('/logout')
+def admin_logout():
+    """خروج از پنل ادمین."""
+    session.pop('admin_logged_in', None)
+    session.pop('admin_id', None)
+    session.pop('admin_name', None)
+    return redirect(url_for('admin_login'))
+
+# ===============================================
+# ۴. مسیر وب‌هوک (ربات بله)
+# ===============================================
 
 @app.route('/webhook', methods=['POST'])
-def bale_webhook():
-    """نقطه ورود اصلی برای دریافت درخواست‌های سرور بله."""
-    update = request.get_json()
-    
-    # فراخوانی تابع پردازش وب‌هوک و ارسال آدرس API جدید
-    # از app_context استفاده می‌کنیم تا دیتابیس در دسترس باشد.
-    with app.app_context():
-        process_webhook_request(update, BALE_API_BASE_URL)
-    
-    # بله انتظار پاسخ 200 OK را دارد.
-    return jsonify({"status": "ok"}), 200
+def webhook():
+    """دریافت به‌روزرسانی‌ها از API بله."""
+    if request.method == 'POST':
+        update = request.get_json()
+        
+        # 🔔 آدرس Base API بله برای ارسال پاسخ
+        # این مقدار باید از متغیر محیطی BALE_API_BASE_URL تامین شود
+        bale_api_base_url = os.environ.get('BALE_API_BASE_URL')
+        
+        if not bale_api_base_url:
+            logger.error("BALE_API_BASE_URL environment variable is not set.")
+            return jsonify({'status': 'error', 'message': 'API base URL missing'}), 500
 
-# ===============================================
-# ۵. اجرای اولیه (برای Gunicorn/Render)
-# ===============================================
-# این بخش مطمئن می‌شود که دیتابیس در زمان راه‌اندازی Gunicorn ایجاد و مقداردهی اولیه شود.
-with app.app_context():
-    init_db()
+        # پردازش درخواست در bot_service
+        process_webhook_request(update, bale_api_base_url)
+        
+        return jsonify({'status': 'ok'})
+    return 'Method Not Allowed', 405
 
-# این بخش فقط برای تست محلی است:
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # این فقط برای تست محلی است و در Render استفاده نمی‌شود.
+    app.run(debug=True)

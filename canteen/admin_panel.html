@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پنل مدیریت سلف</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Tahoma', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-bale': '#29a7e6',
+                        'bale-dark': '#0f79b3',
+                        'canteen-bg': '#f3f4f6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Tahoma', 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-canteen-bg min-h-screen">
+
+    <!-- Header & Navigation -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold text-primary-bale">مدیریت سلف</span>
+                    <div class="hidden md:block mr-10">
+                        <div class="flex items-baseline space-x-4 space-x-reverse">
+                            <a href="#" class="text-bale-dark hover:bg-primary-bale hover:text-white px-3 py-2 rounded-md text-sm font-medium transition duration-150">کارمندان</a>
+                            <a href="#" class="text-gray-600 hover:bg-primary-bale hover:text-white px-3 py-2 rounded-md text-sm font-medium transition duration-150">منو و غذاها</a>
+                            <a href="#" class="text-gray-600 hover:bg-primary-bale hover:text-white px-3 py-2 rounded-md text-sm font-medium transition duration-150">گزارشات رزرو</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4 space-x-reverse">
+                    <span class="text-gray-700 text-sm font-medium">خوش آمدید، {{ admin_name }}</span>
+                    <a href="{{ url_for('admin_logout') }}" class="text-red-500 hover:text-red-700 px-3 py-2 rounded-md text-sm font-medium transition duration-150 border border-red-500 hover:bg-red-50">خروج</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-6 border-b pb-2">داشبورد مدیریتی</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- Card 1: Employee Management -->
+            <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-2xl transition duration-300">
+                <h2 class="text-xl font-semibold text-primary-bale mb-4 flex items-center">
+                    <!-- Icon for Employees -->
+                    <svg class="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20v-2A3 3 0 005 18v2m3-8a3 3 0 100-6 3 3 0 000 6zm-5.356 1.857A2 2 0 015 18v2m12.356-1.857A2 2 0 0119 18v2m-7-9a3 3 0 00-9 3v1a2 2 0 002 2h14a2 2 0 002-2v-1a3 3 0 00-9-3z"></path></svg>
+                    مدیریت کارمندان
+                </h2>
+                <p class="text-gray-600 mb-4">افزودن کاربر جدید، ویرایش اطلاعات، اعطای نقش ادمین.</p>
+                <button onclick="alert('این بخش در حال توسعه است. برای افزودن/لیست کارمندان، منطق JS باید اضافه شود.')" class="w-full bg-primary-bale text-white py-2 rounded-lg hover:bg-bale-dark transition duration-150 font-medium shadow-md">شروع مدیریت</button>
+            </div>
+
+            <!-- Card 2: Menu Management -->
+            <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-2xl transition duration-300">
+                <h2 class="text-xl font-semibold text-primary-bale mb-4 flex items-center">
+                    <!-- Icon for Menu -->
+                    <svg class="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2a1.5 1.5 0 01-1.5-1.5V10a1.5 1.5 0 011.5-1.5zm-5 4a3 3 0 013-3h4a3 3 0 013 3h-4a3 3 0 00-3-3v4a3 3 0 003 3h4a3 3 0 003-3v-4h-4zm7 0h4m-4-4h4"></path></svg>
+                    تنظیم منوی روز
+                </h2>
+                <p class="text-gray-600 mb-4">تعریف غذاهای موجود، قیمت‌ها و روزهای سرو.</p>
+                <button onclick="alert('این بخش در حال توسعه است. برای مدیریت منو، منطق JS باید اضافه شود.')" class="w-full bg-primary-bale text-white py-2 rounded-lg hover:bg-bale-dark transition duration-150 font-medium shadow-md">تنظیم منو</button>
+            </div>
+
+            <!-- Card 3: Reservation Reports -->
+            <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-2xl transition duration-300">
+                <h2 class="text-xl font-semibold text-primary-bale mb-4 flex items-center">
+                    <!-- Icon for Reports -->
+                    <svg class="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0h6m-3 0v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6zm0 0v2m6-2v-6a2 2 0 00-2-2h-2a2 2 0 00-2 2v6m0 0v2m6-2v-6a2 2 0 00-2-2h-2a2 2 0 00-2 2v6m0 0v2"></path></svg>
+                    گزارش و آمار
+                </h2>
+                <p class="text-gray-600 mb-4">مشاهده گزارش رزروها بر اساس تاریخ، کارمند و غذا.</p>
+                <button onclick="alert('این بخش در حال توسعه است. برای گزارش‌گیری، منطق JS باید اضافه شود.')" class="w-full bg-primary-bale text-white py-2 rounded-lg hover:bg-bale-dark transition duration-150 font-medium shadow-md">مشاهده گزارشات</button>
+            </div>
+
+        </div>
+
+        <!-- Placeholder for Forms/Modals (future development) -->
+        <div class="mt-12 bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-bale">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">راهنمای توسعه</h2>
+            <p class="text-gray-600">در مراحل بعدی، منطق JavaScript برای این بخش اضافه خواهد شد تا بتوانید از طریق همین پنل وب، کاربران و منوی غذا را در دیتابیس مدیریت کنید.</p>
+        </div>
+
+    </main>
+
+</body>
+</html>
