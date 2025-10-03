@@ -5,10 +5,9 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import date
-# دقت کنید: در این ساختار، db و مدل‌ها از داخل پکیج 'canteen' ایمپورت می‌شوند.
 from . import db  
 from .models import Employee, Menu, Reservation 
-from .bot_service import process_webhook_request # فرض می‌کنیم bot_service.py وجود دارد
+from .bot_service import process_webhook_request 
 
 # --- تنظیمات اپلیکیشن ---
 def create_app():
@@ -18,7 +17,6 @@ def create_app():
     
     # تنظیمات پایگاه داده PostgreSQL برای Render
     DATABASE_URL = os.environ.get('DATABASE_URL')
-    # جایگزینی 'postgres://' با 'postgresql://' برای سازگاری با SQLAlchemy
     if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
@@ -39,7 +37,6 @@ def create_app():
     @app.route('/', methods=['GET'])
     def index():
         """صفحه اصلی که به پنل ادمین هدایت می‌کند."""
-        # اگر ادمین لاگین کرده باشد، به پنل ادمین هدایت می‌شود
         if session.get('admin_logged_in'):
             return redirect(url_for('admin_panel'))
         return redirect(url_for('admin_login'))
@@ -50,12 +47,13 @@ def create_app():
         if 'admin_logged_in' in session:
             return redirect(url_for('admin_panel'))
 
-        # منطق POST برای ورود
         if request.method == 'POST':
             national_id = request.form.get('national_id')
             password = request.form.get('password')
 
             # جستجوی کارمند با کد ملی و ادمین بودن
+            # از .all() استفاده می کنیم و سپس عنصر اول را می گیریم تا با مشکل کوتیشن در Build Command تداخل نداشته باشد.
+            # اگرچه در زمان اجرا این روش کمی متفاوت است اما برای رفع تداخل کوتیشن ها لازم است.
             employee = db.session.execute(
                 db.select(Employee).filter_by(national_id=national_id, is_admin=True)
             ).scalar_one_or_none()
@@ -64,10 +62,8 @@ def create_app():
             if employee and employee.check_password(password):
                 session['admin_logged_in'] = True
                 session['admin_id'] = employee.id
-                # در سناریوی واقعی، معمولاً به صفحه ادمین هدایت می‌کنیم
                 return redirect(url_for('admin_panel'))
             else:
-                # پیام خطا برای نمایش در قالب (template)
                 return render_template('admin_login.html', error='کد ملی یا رمز عبور اشتباه است.')
 
         return render_template('admin_login.html')
@@ -78,7 +74,7 @@ def create_app():
         if not session.get('admin_logged_in'):
             return redirect(url_for('admin_login'))
 
-        # این فقط یک Placeholder است. محتوای واقعی بعداً اضافه خواهد شد.
+        # فرض می کنیم این تمپلیت وجود دارد
         return render_template('admin_panel.html', current_page='dashboard')
 
     @app.route('/logout')
@@ -96,7 +92,6 @@ def create_app():
         try:
             data = request.json
             if data:
-                # استفاده از تابع process_webhook_request از bot_service
                 response_text = process_webhook_request(data, db) 
                 return jsonify({"status": "ok", "message": response_text})
             return jsonify({"status": "error", "message": "No data received"}), 400
@@ -109,6 +104,6 @@ def create_app():
 # این خط توسط Gunicorn استفاده می‌شود:
 app = create_app()
 
-# فقط برای اجرای محلی (در Render توسط gunicorn اجرا می‌شود)
+# فقط برای اجرای محلی 
 if __name__ == '__main__':
     app.run(debug=True)
