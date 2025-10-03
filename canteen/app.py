@@ -5,16 +5,23 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import date
-from . import db  # ایمپورت شی db از فایل __init__.py
-from .models import Employee, Menu, Reservation # ایمپورت مدل‌ها
-from .bot_service import process_webhook_request
+# دقت کنید: در این ساختار، db و مدل‌ها از داخل پکیج 'canteen' ایمپورت می‌شوند.
+from . import db  
+from .models import Employee, Menu, Reservation 
+from .bot_service import process_webhook_request # فرض می‌کنیم bot_service.py وجود دارد
 
 # --- تنظیمات اپلیکیشن ---
 def create_app():
-    app = Flask(__name__, template_folder='.')
+    # تعیین پوشه تمپلیت به عنوان پوشه فعلی (canteen)
+    app = Flask(__name__, template_folder='.') 
     
     # تنظیمات پایگاه داده PostgreSQL برای Render
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace('postgres://', 'postgresql://')
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    # جایگزینی 'postgres://' با 'postgresql://' برای سازگاری با SQLAlchemy
+    if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # تنظیمات سشن برای احراز هویت
@@ -23,7 +30,7 @@ def create_app():
     # مقداردهی اولیه SQLAlchemy
     db.init_app(app)
     
-    # مقداردهی اولیه Flask-Migrate (اختیاری برای مدیریت دیتابیس)
+    # مقداردهی اولیه Flask-Migrate (برای اعمال تغییرات مدل در دیتابیس)
     migrate = Migrate(app, db)
     
     # --- مسیرهای وب اپلیکیشن ---
@@ -31,6 +38,9 @@ def create_app():
     @app.route('/', methods=['GET'])
     def index():
         """صفحه اصلی که به پنل ادمین هدایت می‌کند."""
+        # اگر ادمین لاگین کرده باشد، به پنل ادمین هدایت می‌شود
+        if session.get('admin_logged_in'):
+            return redirect(url_for('admin_panel'))
         return redirect(url_for('admin_login'))
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -39,18 +49,25 @@ def create_app():
         if 'admin_logged_in' in session:
             return redirect(url_for('admin_panel'))
 
+        # منطق POST برای ورود
         if request.method == 'POST':
             national_id = request.form.get('national_id')
             password = request.form.get('password')
 
-            employee = Employee.query.filter_by(national_id=national_id, is_admin=True).first()
+            # جستجوی کارمند با کد ملی و ادمین بودن
+            employee = db.session.execute(
+                db.select(Employee).filter_by(national_id=national_id, is_admin=True)
+            ).scalar_one_or_none()
             
+            # بررسی رمز عبور
             if employee and employee.check_password(password):
                 session['admin_logged_in'] = True
                 session['admin_id'] = employee.id
-                return jsonify({'success': True, 'redirect_url': url_for('admin_panel')})
+                # در سناریوی واقعی، معمولاً به صفحه ادمین هدایت می‌کنیم
+                return redirect(url_for('admin_panel'))
             else:
-                return jsonify({'success': False, 'message': 'کد ملی یا رمز عبور اشتباه است.'})
+                # پیام خطا برای نمایش در قالب (template)
+                return render_template('admin_login.html', error='کد ملی یا رمز عبور اشتباه است.')
 
         return render_template('admin_login.html')
 
@@ -60,8 +77,8 @@ def create_app():
         if not session.get('admin_logged_in'):
             return redirect(url_for('admin_login'))
 
-        # در این مرحله فقط UI را نمایش می‌دهیم. منطق داده‌ها در مراحل بعد اضافه می‌شود.
-        return render_template('admin_panel.html')
+        # این فقط یک Placeholder است. محتوای واقعی بعداً اضافه خواهد شد.
+        return render_template('admin_panel.html', current_page='dashboard')
 
     @app.route('/logout')
     def admin_logout():
@@ -78,7 +95,8 @@ def create_app():
         try:
             data = request.json
             if data:
-                response_text = process_webhook_request(data)
+                # استفاده از تابع process_webhook_request از bot_service
+                response_text = process_webhook_request(data, db) 
                 return jsonify({"status": "ok", "message": response_text})
             return jsonify({"status": "error", "message": "No data received"}), 400
         except Exception as e:
@@ -90,16 +108,20 @@ def create_app():
     def init_db():
         """ایجاد دیتابیس و اضافه کردن ادمین پیش‌فرض در صورت نبود."""
         with app.app_context():
+            # این خطوط برای ساخت دیتابیس و جداول جدید در زمان Deploy لازم هستند
             db.create_all()
             
             # بررسی وجود ادمین پیش‌فرض (کد ملی 0000000000)
-            admin_bale_id = os.environ.get('SUPER_ADMIN_BALE_ID', '1807093505') # شناسه بله واقعی شما
             
-            # اگر ادمین با این کد ملی (0000000000) وجود ندارد، ایجادش کن
-            if Employee.query.filter_by(national_id='0000000000').first() is None:
+            # استفاده از db.session.execute برای کوئری بهتر در SQLAlchemy 2.0
+            admin_employee = db.session.execute(
+                db.select(Employee).filter_by(national_id='0000000000', is_admin=True)
+            ).scalar_one_or_none()
+            
+            if admin_employee is None:
                 # رمز عبور پیش‌فرض: admin123
                 admin_employee = Employee(
-                    bale_id=admin_bale_id,
+                    bale_id=os.environ.get('SUPER_ADMIN_BALE_ID', '1807093505'),
                     national_id='0000000000',
                     name='Super Admin',
                     is_admin=True
@@ -110,11 +132,14 @@ def create_app():
                 print("--- Super Admin Created ---")
     
     # دیتابیس را در زمان اجرای برنامه ایجاد می‌کند
-    init_db()
+    with app.app_context():
+        init_db()
 
     return app
 
+# این خط توسط Gunicorn استفاده می‌شود:
 app = create_app()
 
+# فقط برای اجرای محلی (در Render توسط gunicorn اجرا می‌شود)
 if __name__ == '__main__':
     app.run(debug=True)

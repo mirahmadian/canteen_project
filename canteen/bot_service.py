@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import date, timedelta
 import requests
-from .models import db, Employee, DailyMenu, Reservation 
+from .models import db, Employee, Menu, Reservation 
 
 # تنظیمات اولیه
 logger = logging.getLogger(__name__)
